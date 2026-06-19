@@ -1,0 +1,149 @@
+{
+  "pipeline": {
+    "name": "CSV_to_RHEL_DataWarehouse",
+    "version": "1.0",
+    "description": "Flujo ETL que simula componentes de Ab Initio para procesar datos en RHEL",
+    "created_by": "DataEngineer",
+    "created_date": "2024-06-18",
+    "components": [
+      {
+        "id": "READER_001",
+        "type": "CSVReader",
+        "description": "Lee archivo CSV de entrada",
+        "properties": {
+          "file_path": "/tmp/input_data/datos_clientes.csv",
+          "encoding": "UTF-8",
+          "has_header": true,
+          "delimiter": ","
+        },
+        "outputs": ["raw_data"]
+      },
+      {
+        "id": "TRANSFORMER_001",
+        "type": "DataTransformer",
+        "description": "Aplica transformaciones de negocio",
+        "depends_on": ["READER_001"],
+        "properties": {
+          "filter_conditions": [
+            {
+              "field": "monto",
+              "operator": "greater_than",
+              "value": 1000
+            }
+          ],
+          "calculated_fields": [
+            {
+              "name": "categoria",
+              "type": "string",
+              "logic": "IF(monto > 2000, 'Premium', 'Estándar')"
+            },
+            {
+              "name": "monto_formateado",
+              "type": "string",
+              "logic": "FORMAT_CURRENCY(monto, 'MXN')"
+            },
+            {
+              "name": "fecha_proceso",
+              "type": "date",
+              "logic": "TODAY()"
+            }
+          ]
+        },
+        "outputs": ["transformed_data"]
+      },
+      {
+        "id": "VALIDATOR_001",
+        "type": "DataValidator",
+        "description": "Valida integridad y calidad de datos",
+        "depends_on": ["TRANSFORMER_001"],
+        "properties": {
+          "validation_rules": [
+            {
+              "field": "id",
+              "rule": "NOT_NULL",
+              "error_action": "REJECT_RECORD"
+            },
+            {
+              "field": "email",
+              "rule": "REGEX_MATCH",
+              "pattern": "^[^@]+@[^@]+\\.[^@]+$",
+              "error_action": "LOG_WARNING"
+            },
+            {
+              "field": "monto",
+              "rule": "NUMERIC",
+              "error_action": "REJECT_RECORD"
+            }
+          ],
+          "generate_quality_report": true
+        },
+        "outputs": ["quality_report"]
+      },
+      {
+        "id": "WRITER_001",
+        "type": "CSVWriter",
+        "description": "Escribe datos transformados en directorio RHEL",
+        "depends_on": ["VALIDATOR_001"],
+        "properties": {
+          "output_directory": "/tmp/output_data",
+          "file_naming_pattern": "datos_transformados_{TIMESTAMP}.csv",
+          "overwrite": false,
+          "encoding": "UTF-8",
+          "delimiter": ","
+        },
+        "outputs": ["output_file"]
+      },
+      {
+        "id": "REPORT_001",
+        "type": "ReportGenerator",
+        "description": "Genera reporte de ejecución",
+        "depends_on": ["WRITER_001", "VALIDATOR_001"],
+        "properties": {
+          "output_directory": "/tmp/output_data",
+          "format": "JSON",
+          "file_naming_pattern": "reporte_ejecucion_{TIMESTAMP}.json",
+          "include_metrics": true,
+          "include_lineage": true
+        },
+        "outputs": ["execution_report"]
+      }
+    ],
+    "execution_settings": {
+      "mode": "SEQUENTIAL",
+      "error_handling": "STOP_ON_ERROR",
+      "logging_level": "INFO",
+      "timeout_seconds": 3600,
+      "retry_policy": {
+        "max_retries": 3,
+        "retry_delay_seconds": 5,
+        "retryable_errors": [
+          "TIMEOUT",
+          "TEMPORARY_FILE_ERROR"
+        ]
+      }
+    },
+    "scheduling": {
+      "type": "MANUAL",
+      "description": "Ejecutable manualmente o via cron",
+      "cron_expression": "0 2 * * *",
+      "timezone": "America/Mexico_City"
+    },
+    "notifications": {
+      "email": {
+        "enabled": false,
+        "recipients": ["admin@example.com"],
+        "on_success": true,
+        "on_failure": true
+      },
+      "log_file": {
+        "enabled": true,
+        "directory": "/tmp/logs"
+      }
+    },
+    "data_lineage": {
+      "track_column_transformations": true,
+      "track_record_filters": true,
+      "generate_lineage_report": true
+    }
+  }
+}

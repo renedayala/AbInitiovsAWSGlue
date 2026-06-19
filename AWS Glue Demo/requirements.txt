@@ -1,0 +1,30 @@
+# ============================================================================
+# requirements.txt - Dependencias de Python para AWS Glue y desarrollo local
+# ============================================================================
+
+# AWS SDK para Python
+boto3>=1.28.0
+botocore>=1.31.0
+
+# Para pruebas locales (mocking de Glue)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# PySpark (solo para desarrollo local, Glue lo incluye)
+# pyspark>=3.4.0  # Comentado porque Glue lo proporciona
+
+# Logging y monitoreo
+python-json-logger>=2.0.0
+
+# Utilidades
+python-dateutil>=2.8.0
+pytz>=2023.3
+
+# Desarrollo
+black>=23.0.0  # Formateo de código
+flake8>=6.0.0  # Linting
+mypy>=1.0.0    # Type checking
+
+# Documentación
+sphinx>=5.0.0
+sphinx-rtd-theme>=1.2.0

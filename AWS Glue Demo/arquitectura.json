@@ -1,0 +1,436 @@
+{
+  "arquitectura": {
+    "nombre": "Demo ETL con AWS Glue",
+    "version": "1.0",
+    "descripcion": "Flujo ETL completo en AWS Glue para procesamiento de datos CSV",
+    "created_date": "2024-06-19",
+    "region": "us-east-1 (configurable)",
+    "costo_estimado_mensual": "$5-15 (según uso)"
+  },
+  "componentes": {
+    "s3": {
+      "tipo": "AWS S3",
+      "descripcion": "Almacenamiento de datos",
+      "directorios": {
+        "input-data": "CSV de entrada (datos_clientes.csv)",
+        "output-data": "Resultados procesados (Parquet + JSON)",
+        "glue-scripts": "Código Python del job",
+        "glue-logs": "Logs de ejecución"
+      },
+      "ventajas": [
+        "Almacenamiento durable y escalable",
+        "Integración nativa con Glue",
+        "Versionamiento automático",
+        "Bajo costo ($0.023/GB)"
+      ]
+    },
+    "glue_job": {
+      "tipo": "AWS Glue Job",
+      "nombre": "demo-etl-glue",
+      "lenguaje": "PySpark (Python 3.9)",
+      "tipo_job": "pythonshell",
+      "componentes_internos": {
+        "1_reader": {
+          "clase": "GlueReader",
+          "descripcion": "Lee CSV desde S3",
+          "libreria": "glue.create_dynamic_frame"
+        },
+        "2_transformer": {
+          "clase": "GlueTransformer",
+          "descripcion": "Transforma datos con Spark",
+          "operaciones": [
+            "Filtro: monto > 1000",
+            "Categorización: Premium/Estándar",
+            "Formateo de moneda",
+            "Fecha de procesamiento"
+          ]
+        },
+        "3_validator": {
+          "clase": "GlueValidator",
+          "descripcion": "Valida integridad de datos",
+          "verificaciones": [
+            "Total de registros",
+            "Suma de montos",
+            "Promedio de montos",
+            "Agrupación por categoría"
+          ]
+        },
+        "4_quality_check": {
+          "clase": "DataQualityCheck",
+          "descripcion": "Verifica calidad",
+          "validaciones": [
+            "IDs no nulos",
+            "Emails no nulos",
+            "Montos no nulos",
+            "Montos positivos",
+            "Duplicados"
+          ]
+        },
+        "5_writer": {
+          "clase": "GlueWriter",
+          "descripcion": "Escribe en S3 formato Parquet",
+          "formato": "Parquet (comprimido)",
+          "ventajas": [
+            "Compresión automática",
+            "Schema fuerte",
+            "Lecturable por Athena/Redshift"
+          ]
+        },
+        "6_reporter": {
+          "clase": "ReportWriter",
+          "descripcion": "Genera reporte JSON",
+          "contenido": [
+            "Timestamp",
+            "Total de registros",
+            "Estadísticas de monto",
+            "Agrupación por categoría",
+            "Estado de validación"
+          ]
+        }
+      },
+      "configuracion": {
+        "worker_type": "G.1X",
+        "num_workers": 2,
+        "dpu_totales": 2,
+        "timeout_minutos": 60,
+        "glue_version": "4.0",
+        "python_version": "3.9",
+        "job_bookmarks": "habilitados"
+      }
+    },
+    "iam_role": {
+      "tipo": "AWS IAM Role",
+      "nombre": "GlueJobRole",
+      "permisos": {
+        "s3": [
+          "GetObject",
+          "PutObject",
+          "DeleteObject",
+          "ListBucket"
+        ],
+        "logs": [
+          "CreateLogGroup",
+          "CreateLogStream",
+          "PutLogEvents"
+        ],
+        "glue": [
+          "AWSGlueServiceRole (política gestionada)"
+        ]
+      }
+    },
+    "cloudwatch": {
+      "tipo": "AWS CloudWatch",
+      "descripcion": "Monitoreo y logs",
+      "logs": "/aws-glue/jobs/demo-etl-glue",
+      "metricas": [
+        "dpu_seconds (recursos usados)",
+        "job_duration_seconds (tiempo total)",
+        "job_failure (fallos)"
+      ],
+      "alarmas": [
+        "Alerta cuando job falla"
+      ]
+    },
+    "glue_trigger": {
+      "tipo": "AWS Glue Trigger",
+      "nombre": "daily-trigger",
+      "tipo_trigger": "SCHEDULED_BATCH",
+      "horario": "cron(0 2 * * ? *)",
+      "descripcion": "Ejecuta job diariamente a las 2 AM UTC"
+    }
+  },
+  "flujo_datos": {
+    "entrada": {
+      "fuente": "S3: s3://bucket/input-data/datos_clientes.csv",
+      "formato": "CSV",
+      "registros_ejemplo": 10,
+      "columnas": ["id", "nombre", "email", "ciudad", "monto"]
+    },
+    "transformaciones": [
+      {
+        "paso": 1,
+        "nombre": "Lectura",
+        "entrada": "CSV de S3",
+        "salida": "DynamicFrame"
+      },
+      {
+        "paso": 2,
+        "nombre": "Filtro",
+        "criterio": "monto > 1000",
+        "registros_eliminados": "~20%"
+      },
+      {
+        "paso": 3,
+        "nombre": "Enriquecimiento",
+        "campos_agregados": [
+          "categoria (Premium/Estándar)",
+          "monto_formateado ($X,XXX.XX)",
+          "fecha_proceso (YYYY-MM-DD)",
+          "estado (Procesado)",
+          "etl_timestamp (ISO 8601)"
+        ]
+      },
+      {
+        "paso": 4,
+        "nombre": "Validación",
+        "verificaciones": "Integridad y calidad"
+      },
+      {
+        "paso": 5,
+        "nombre": "Escritura",
+        "destino": "S3: Parquet + JSON",
+        "particiones": "Opcional por fecha"
+      }
+    ],
+    "salida": {
+      "ubicacion": "S3: s3://bucket/output-data/",
+      "formatos": [
+        {
+          "formato": "Parquet",
+          "archivo": "datos_transformados_*.parquet",
+          "ventajas": "Comprimido, esquema fuerte"
+        },
+        {
+          "formato": "JSON",
+          "archivo": "reporte_glue_*.json",
+          "contenido": "Estadísticas y métricas"
+        }
+      ],
+      "registros_procesados": "4-8 (según filtro)"
+    }
+  },
+  "comparacion_con_demo_local": {
+    "aspecto": [
+      "Costo",
+      "Escalabilidad",
+      "Distribución",
+      "Setup",
+      "Mantenimiento",
+      "Integración AWS",
+      "Procesamiento",
+      "Datos soportados"
+    ],
+    "demo_local": [
+      "Gratis",
+      "Limitada (1 máquina)",
+      "No distribuido",
+      "Inmediato",
+      "Manual",
+      "No nativa",
+      "Secuencial",
+      "Hasta ~100 GB"
+    ],
+    "aws_glue": [
+      "Por uso (~$0.10 por ejecución)",
+      "Ilimitada (hasta 100 DPUs)",
+      "Distribuido automático",
+      "5-10 minutos",
+      "Administrado por AWS",
+      "Integración nativa",
+      "Paralelo escalable",
+      "Terabytes+"
+    ]
+  },
+  "métodos_despliegue": {
+    "opcion_1": {
+      "nombre": "Script Bash",
+      "archivo": "glue_deployment.sh",
+      "ventajas": [
+        "Simple y rápido",
+        "No requiere herramientas adicionales",
+        "Completo (setup, run, describe)"
+      ],
+      "comando": "./glue_deployment.sh setup && ./glue_deployment.sh run"
+    },
+    "opcion_2": {
+      "nombre": "Terraform",
+      "archivo": "terraform.tf",
+      "ventajas": [
+        "Infrastructure as Code (IaC)",
+        "Reproducible",
+        "Versionable en Git",
+        "Fácil de destruir y recrear"
+      ],
+      "comando": "terraform init && terraform apply"
+    },
+    "opcion_3": {
+      "nombre": "AWS Console",
+      "ventajas": [
+        "Sin línea de comando",
+        "Visual",
+        "Bueno para aprender"
+      ],
+      "pasos": [
+        "Crear rol IAM",
+        "Crear bucket S3",
+        "Subir script a S3",
+        "Crear job en Glue"
+      ]
+    }
+  },
+  "pruebas": {
+    "pruebas_locales": {
+      "archivo": "test_glue_local.py",
+      "descripcion": "Tests SIN AWS (mocks locales)",
+      "duracion": "~30 segundos",
+      "pruebas": [
+        "test_reader (lectura CSV)",
+        "test_transformer (transformaciones)",
+        "test_validator (validación)",
+        "test_writer (escritura)",
+        "test_quality_checks (calidad)"
+      ],
+      "comando": "python3 test_glue_local.py"
+    },
+    "pruebas_en_aws": {
+      "descripcion": "Tests EN AWS (ejecución real)",
+      "duracion": "5-10 minutos",
+      "costo": "~$0.05-0.10",
+      "validaciones": [
+        "Rol IAM tiene permisos correctos",
+        "Bucket S3 existe y es accesible",
+        "Script se ejecuta sin errores",
+        "Datos se escriben en S3",
+        "Reportes se generan"
+      ],
+      "comando": "./glue_deployment.sh run"
+    }
+  },
+  "seguridad": {
+    "iam": {
+      "principio": "Least Privilege",
+      "permisos": "Solo lo necesario para Glue y S3",
+      "mejores_practicas": [
+        "No usar credenciales root",
+        "Usar roles IAM",
+        "Auditar permisos regularmente"
+      ]
+    },
+    "s3": {
+      "encriptacion": "SSE-S3 por defecto",
+      "versionamiento": "Habilitado",
+      "acceso": "Restringido a IAM role de Glue"
+    },
+    "logs": {
+      "cloudwatch": "Logs de ejecución",
+      "retension": "Configurable (default 30 días)",
+      "acceso": "Solo para usuarios con permisos CloudWatch"
+    }
+  },
+  "monitorizacion": {
+    "cloudwatch": {
+      "logs": "/aws-glue/jobs/demo-etl-glue",
+      "metricas": [
+        "dpu_seconds (costo en DPU)",
+        "job_duration_seconds (tiempo)",
+        "job_failure (conteo de fallos)"
+      ]
+    },
+    "alarmas": {
+      "job_failure": "Se dispara cuando job falla",
+      "acciones": [
+        "Email SNS",
+        "Webhook personalizado"
+      ]
+    },
+    "comandos": {
+      "logs_en_vivo": "aws logs tail /aws-glue/jobs/demo-etl-glue --follow",
+      "estado_job": "aws glue get-job-run --job-name demo-etl-glue --run-id jr_XXX",
+      "listar_ejecutiones": "aws glue list-job-runs --job-name demo-etl-glue"
+    }
+  },
+  "costos_detallados": {
+    "descripcion": "Estimación mensual",
+    "supuestos": {
+      "ejecuciones_por_dia": 10,
+      "duracion_promedio_minutos": 5,
+      "workers": 2,
+      "worker_type": "G.1X (1 DPU cada uno)"
+    },
+    "calculos": {
+      "dpu_horas": {
+        "formula": "10 ejecuciones/día × 30 días × (5 min ÷ 60) × 2 DPUs",
+        "resultado": "50 DPU-horas",
+        "costo": "$50 × $0.44/DPU-hora = $22"
+      },
+      "s3_storage": {
+        "datos_entrada": "1 GB × $0.023 = $0.023",
+        "datos_salida": "0.1 GB × $0.023 = $0.002",
+        "costo": "$0.025"
+      },
+      "cloudwatch": {
+        "logs": "~1 GB/mes × $0.50 = $0.50",
+        "metricas": "Gratis (menos de 10 métricas)"
+      },
+      "total_estimado": "$22-25/mes"
+    },
+    "reducir_costos": [
+      "Usar G.2X si los jobs son cortos",
+      "Reducir número de workers",
+      "Usar job bookmarks (procesa solo datos nuevos)",
+      "Ejecutar en horarios fuera de pico"
+    ]
+  },
+  "archivos_incluidos": {
+    "codigo": [
+      {
+        "archivo": "glue_job.py",
+        "descripcion": "Job principal de Glue (PySpark)",
+        "lineas": "~600",
+        "componentes": 6
+      },
+      {
+        "archivo": "test_glue_local.py",
+        "descripcion": "Tests locales con mocks",
+        "lineas": "~400",
+        "pruebas": 5
+      }
+    ],
+    "despliegue": [
+      {
+        "archivo": "glue_deployment.sh",
+        "descripcion": "Script para desplegar en AWS",
+        "comandos": [
+          "setup (crear todo)",
+          "run (ejecutar job)",
+          "describe (ver detalles)"
+        ]
+      },
+      {
+        "archivo": "terraform.tf",
+        "descripcion": "Infrastructure as Code",
+        "recursos": [
+          "S3 bucket",
+          "IAM role",
+          "Glue job",
+          "Trigger"
+        ]
+      },
+      {
+        "archivo": "quick_start.sh",
+        "descripcion": "Menú interactivo para iniciar"
+      }
+    ],
+    "documentacion": [
+      {
+        "archivo": "README_GLUE.md",
+        "descripcion": "Guía completa de AWS Glue",
+        "secciones": 10
+      },
+      {
+        "archivo": "arquitectura.json",
+        "descripcion": "Este archivo (documentación de arquitectura)"
+      }
+    ],
+    "configuracion": [
+      {
+        "archivo": "terraform.tfvars",
+        "descripcion": "Variables de configuración Terraform"
+      },
+      {
+        "archivo": "requirements.txt",
+        "descripcion": "Dependencias Python"
+      }
+    ]
+  }
+}
